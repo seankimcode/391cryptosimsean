@@ -1,27 +1,25 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.8/firebase-app.js';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/9.6.8/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/9.6.8/firebase-firestore.js';
-
+// Initialize Firebase
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID",
-    measurementId: "YOUR_MEASUREMENT_ID"
+    apiKey: "AIzaSyDl35KtU9I_qL2_UUSiwi1ckfw6kmvsRyY",
+    authDomain: "cryptosimsean.firebaseapp.com",
+    projectId: "cryptosimsean",
+    storageBucket: "cryptosimsean.appspot.com",
+    messagingSenderId: "205429209021",
+    appId: "1:205429209021:web:2f0a0a9c62eb4e2f03c9a7",
+    measurementId: "G-X8X1VZQEX8"
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth();
-const db = getFirestore();
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 
-window.createAccount = function() {
+// Firebase Authentication
+function createAccount() {
     const email = document.getElementById('email_field').value;
     const password = document.getElementById('password_field').value;
 
-    createUserWithEmailAndPassword(auth, email, password)
+    auth.createUserWithEmailAndPassword(email, password)
         .then((userCredential) => {
             alert('Account created successfully!');
             showAuthenticatedUI();
@@ -29,13 +27,13 @@ window.createAccount = function() {
         .catch((error) => {
             alert('Error creating account: ' + error.message);
         });
-};
+}
 
-window.login = function() {
+function login() {
     const email = document.getElementById('email_field').value;
     const password = document.getElementById('password_field').value;
 
-    signInWithEmailAndPassword(auth, email, password)
+    auth.signInWithEmailAndPassword(email, password)
         .then((userCredential) => {
             alert('Logged in successfully!');
             showAuthenticatedUI();
@@ -43,17 +41,17 @@ window.login = function() {
         .catch((error) => {
             alert('Error logging in: ' + error.message);
         });
-};
+}
 
-window.logout = function() {
-    signOut(auth).then(() => {
+function logout() {
+    auth.signOut().then(() => {
         alert('Logged out successfully!');
         document.getElementById('login_div').style.display = 'block';
         document.getElementById('app').style.display = 'none';
     }).catch((error) => {
         alert('Error logging out: ' + error.message);
     });
-};
+}
 
 function showAuthenticatedUI() {
     document.getElementById('login_div').style.display = 'none';
@@ -62,7 +60,7 @@ function showAuthenticatedUI() {
 }
 
 // Fetch data from CoinGecko API
-window.fetchCryptoData = async function() {
+async function fetchCryptoData() {
     try {
         const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
         const data = await response.json();
@@ -70,21 +68,21 @@ window.fetchCryptoData = async function() {
     } catch (error) {
         console.error('Error fetching data from CoinGecko:', error);
     }
-};
+}
 
 // Show the specified page and hide others
-window.showPage = function(pageId) {
+function showPage(pageId) {
     const pages = document.querySelectorAll('.page');
     pages.forEach(page => page.style.display = 'none');
     document.getElementById(pageId).style.display = 'block';
-};
+}
 
 // Add portfolio management functions
 async function loadPortfolio() {
     const user = auth.currentUser;
     if (user) {
-        const portfolioRef = doc(db, "portfolios", user.uid);
-        const portfolioDoc = await getDoc(portfolioRef);
+        const portfolioRef = db.collection("portfolios").doc(user.uid);
+        const portfolioDoc = await portfolioRef.get();
 
         if (portfolioDoc.exists()) {
             const portfolioData = portfolioDoc.data();
@@ -112,8 +110,8 @@ function displayPortfolio(portfolioData) {
 async function updatePortfolio(crypto, amount) {
     const user = auth.currentUser;
     if (user) {
-        const portfolioRef = doc(db, "portfolios", user.uid);
-        await setDoc(portfolioRef, { [crypto]: amount }, { merge: true });
+        const portfolioRef = db.collection("portfolios").doc(user.uid);
+        await portfolioRef.set({ [crypto]: amount }, { merge: true });
         loadPortfolio();
         addTradeToHistory(crypto, amount);
     } else {
