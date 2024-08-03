@@ -61,17 +61,10 @@ function showAuthenticatedUI() {
 }
 
 // Fetch data from CoinGecko API
-async function fetchPortfolioPrices(portfolio) {
-    const prices = {};
-    for (const crypto in portfolio) {
-        const price = await fetchCryptoPrice(crypto);
-        if (price !== null) {
-            prices[crypto] = price;
-        } else {
-            console.error(`Price for ${crypto} is not available`);
-        }
-    }
-    return prices;
+async function fetchCryptoPrice(crypto) {
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${crypto}&vs_currencies=usd`);
+    const data = await response.json();
+    return data[crypto].usd;
 }
 
 // Fetch data for all cryptos in the portfolio
@@ -128,6 +121,9 @@ function displayPortfolio(portfolioData, prices) {
     const totalValueItem = document.createElement('div');
     totalValueItem.innerText = `Total Portfolio Value: ${totalValue.toFixed(2)} USD`;
     portfolioContent.appendChild(totalValueItem);
+
+    // Update portfolio chart
+    updatePortfolioChart(portfolioData, prices);
 }
 
 async function updatePortfolio(crypto, amount) {
@@ -157,11 +153,10 @@ async function updatePortfolio(crypto, amount) {
         await historyRef.set({
             [new Date().toISOString()]: totalValue
         }, { merge: true });
-
-        await updatePortfolioChart();
     } else {
         console.log("No user logged in.");
     }
+    await updatePortfolioChart();
 }
 
 async function performTrade(event) {
@@ -211,77 +206,42 @@ async function loadTradeHistory() {
 
 // Portfolio chart
 let portfolioChart;
-async function updatePortfolioChart() {
-    const user = auth.currentUser;
-    if (user) {
-        const historyRef = db.collection("portfolioHistory").doc(user.uid);
-        const historyDoc = await historyRef.get();
-        if (historyDoc.exists()) {
-            const historyData = historyDoc.data();
-            const labels = Object.keys(historyData).map(timestamp => new Date(timestamp));
-            const data = Object.values(historyData);
+function updatePortfolioChart(portfolioData, prices) {
+    const ctx = document.getElementById('portfolioChart').getContext('2d');
+    const labels = Object.keys(portfolioData);
+    const data = labels.map(label => portfolioData[label] * prices[label]);
 
-            const ctx = document.getElementById('portfolioChart').getContext('2d');
-            if (portfolioChart) {
-                portfolioChart.destroy();
-            }
-            portfolioChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Total Portfolio Value Over Time',
-                        data: data,
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        borderWidth: 1,
-                        fill: false
-                    }]
-                },
-                options: {
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'day',
-                                tooltipFormat: 'll',
-                                displayFormats: {
-                                    day: 'MMM D'
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Date'
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Portfolio Value (USD)'
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `Value: $${context.raw.toFixed(2)}`;
-                                }
-                            }
-                        }
+    if (portfolioChart) {
+        portfolioChart.data.labels = labels;
+        portfolioChart.data.datasets[0].data = data;
+        portfolioChart.update();
+    } else {
+        portfolioChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Portfolio Value Over Time',
+                    data: data,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
                     }
                 }
-            });
-        } else {
-            console.log("No historical data available.");
-        }
+            }
+        });
     }
 }
 
 // Refresh portfolio prices every hour
 setInterval(loadPortfolio, 3600000);
 
-auth.onAuthStateChanged((user) => {
+onAuthStateChanged(auth, (user) => {
     if (user) {
         showAuthenticatedUI();
         loadPortfolio();

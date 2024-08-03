@@ -12,8 +12,6 @@
     <link href="css/styles.css" rel="stylesheet" />
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
     <div class="d-flex" id="wrapper">
@@ -58,7 +56,6 @@
                         </div>
                         <h4>Portfolio Value Over Time</h4>
                         <canvas id="portfolioChart"></canvas>
-                        
                     </div>
 
                     <div id="trade_div" class="page" style="display: none;">
@@ -84,12 +81,14 @@
 
     <!-- Bootstrap core JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Firebase SDK -->
+    <!-- Core theme JS -->
+    <script src="js/scripts.js"></script>
+    
+    <!-- Firebase SDK - Include specific Firebase products -->
     <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
-        import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
+        import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyDl35KtU9I_qL2_UUSiwi1ckfw6kmvsRyY",
@@ -106,50 +105,67 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // Define showPage function here
+        window.showPage = function(pageId) {
+            const pages = document.querySelectorAll('.page');
+            pages.forEach(page => page.style.display = 'none');
+            document.getElementById(pageId).style.display = 'block';
+        }
+
         // Firebase Authentication
-        window.createAccount = async function() {
+        window.createAccount = function() {
             const email = document.getElementById('email_field').value;
             const password = document.getElementById('password_field').value;
 
-            try {
-                await createUserWithEmailAndPassword(auth, email, password);
-                alert('Account created successfully!');
-                showAuthenticatedUI();
-            } catch (error) {
-                alert('Error creating account: ' + error.message);
-            }
+            createUserWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    alert('Account created successfully!');
+                    showAuthenticatedUI();
+                })
+                .catch((error) => {
+                    alert('Error creating account: ' + error.message);
+                });
         }
 
-        window.login = async function() {
+        window.login = function() {
             const email = document.getElementById('email_field').value;
             const password = document.getElementById('password_field').value;
 
-            try {
-                await signInWithEmailAndPassword(auth, email, password);
-                alert('Logged in successfully!');
-                showAuthenticatedUI();
-            } catch (error) {
-                alert('Error logging in: ' + error.message);
-            }
+            signInWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    alert('Logged in successfully!');
+                    showAuthenticatedUI();
+                })
+                .catch((error) => {
+                    alert('Error logging in: ' + error.message);
+                });
         }
 
-        window.logout = async function() {
-            try {
-                await signOut(auth);
+        window.logout = function() {
+            signOut(auth).then(() => {
                 alert('Logged out successfully!');
                 document.getElementById('login_div').style.display = 'block';
                 document.getElementById('app').style.display = 'none';
-            } catch (error) {
+            }).catch((error) => {
                 alert('Error logging out: ' + error.message);
-            }
+            });
         }
 
         function showAuthenticatedUI() {
             document.getElementById('login_div').style.display = 'none';
             document.getElementById('app').style.display = 'block';
             showPage('portfolio_div');
-            loadPortfolio();
-            loadTradeHistory();
+        }
+
+        // Fetch data from CoinGecko API
+        window.fetchCryptoData = async function() {
+            try {
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&x_cg_demo_api_key=CG-GWH6d4aEUY66FHYcP3WMP8c1');
+                const data = await response.json();
+                console.log('Crypto Prices:', data);
+            } catch (error) {
+                console.error('Error fetching data from CoinGecko:', error);
+            }
         }
 
         // Show the specified page and hide others
@@ -157,22 +173,6 @@
             const pages = document.querySelectorAll('.page');
             pages.forEach(page => page.style.display = 'none');
             document.getElementById(pageId).style.display = 'block';
-        }
-
-        // Fetch data from CoinGecko API
-        async function fetchCryptoPrice(crypto) {
-            const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${crypto}&vs_currencies=usd`);
-            const data = await response.json();
-            return data[crypto].usd;
-        }
-
-        // Fetch data for all cryptos in the portfolio
-        async function fetchPortfolioPrices(portfolio) {
-            const prices = {};
-            for (const crypto in portfolio) {
-                prices[crypto] = await fetchCryptoPrice(crypto);
-            }
-            return prices;
         }
 
         // Add portfolio management functions
@@ -186,7 +186,7 @@
                     const portfolioData = portfolioDoc.data();
                     const prices = await fetchPortfolioPrices(portfolioData);
                     displayPortfolio(portfolioData, prices);
-                    await updatePortfolioChart();
+                    drawPortfolioChart(portfolioData, prices);
                 } else {
                     console.log("No portfolio found.");
                     document.getElementById('portfolio_content').innerText = "No portfolio found.";
@@ -196,24 +196,49 @@
             }
         }
 
+        async function fetchPortfolioPrices(portfolio) {
+            const prices = {};
+            const cryptos = Object.keys(portfolio).join(',');
+            const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cryptos}&vs_currencies=usd&x_cg_demo_api_key=CG-GWH6d4aEUY66FHYcP3WMP8c1`);
+            const data = await response.json();
+            for (const crypto in portfolio) {
+                const normalizedCrypto = normalizeCryptoName(crypto);
+                prices[normalizedCrypto] = data[normalizedCrypto]?.usd || 0;
+            }
+            return prices;
+        }
+
         function displayPortfolio(portfolioData, prices) {
             const portfolioContent = document.getElementById('portfolio_content');
             portfolioContent.innerHTML = '';
 
-            let totalValue = 0;
-
+            // Normalize crypto names to their standard CoinGecko IDs
+            const normalizedPortfolio = {};
             for (const [crypto, amount] of Object.entries(portfolioData)) {
-                const value = amount * prices[crypto];
-                totalValue += value;
-
-                const item = document.createElement('div');
-                item.innerText = `${crypto}: ${amount} (${value.toFixed(2)} USD)`;
-                portfolioContent.appendChild(item);
+                const normalizedCrypto = normalizeCryptoName(crypto);
+                if (normalizedPortfolio[normalizedCrypto]) {
+                    normalizedPortfolio[normalizedCrypto] += amount;
+                } else {
+                    normalizedPortfolio[normalizedCrypto] = amount;
+                }
             }
 
-            const totalValueItem = document.createElement('div');
-            totalValueItem.innerText = `Total Portfolio Value: ${totalValue.toFixed(2)} USD`;
-            portfolioContent.appendChild(totalValueItem);
+            for (const [crypto, amount] of Object.entries(normalizedPortfolio)) {
+                const item = document.createElement('div');
+                item.innerText = `${crypto}: ${amount} (${(amount * prices[crypto]).toFixed(2)} USD)`;
+                portfolioContent.appendChild(item);
+            }
+        }
+
+        function normalizeCryptoName(name) {
+            const mapping = {
+                'btc': 'bitcoin',
+                'bitcoin': 'bitcoin',
+                'eth': 'ethereum',
+                'ethereum': 'ethereum'
+                // Add more mappings as needed
+            };
+            return mapping[name.toLowerCase()] || name.toLowerCase();
         }
 
         async function updatePortfolio(crypto, amount) {
@@ -225,26 +250,16 @@
                 if (portfolioDoc.exists()) {
                     portfolioData = portfolioDoc.data();
                 }
-                if (portfolioData[crypto]) {
-                    portfolioData[crypto] += amount;
+                const normalizedCrypto = normalizeCryptoName(crypto);
+                if (portfolioData[normalizedCrypto]) {
+                    portfolioData[normalizedCrypto] += amount;
                 } else {
-                    portfolioData[crypto] = amount;
+                    portfolioData[normalizedCrypto] = amount;
                 }
                 await setDoc(portfolioRef, portfolioData);
                 const prices = await fetchPortfolioPrices(portfolioData);
                 displayPortfolio(portfolioData, prices);
-                addTradeToHistory(crypto, amount);
-
-                // Save historical portfolio value
-                const totalValue = Object.entries(portfolioData).reduce((total, [crypto, amount]) => {
-                    return total + (amount * prices[crypto]);
-                }, 0);
-                const historyRef = doc(db, "portfolioHistory", user.uid);
-                await setDoc(historyRef, {
-                    [new Date().toISOString()]: totalValue
-                }, { merge: true });
-
-                await updatePortfolioChart();
+                addTradeToHistory(normalizedCrypto, amount);
             } else {
                 console.log("No user logged in.");
             }
@@ -264,104 +279,10 @@
         }
 
         function addTradeToHistory(crypto, amount) {
-            const user = auth.currentUser;
-            if (user) {
-                const tradeHistoryRef = collection(db, "tradeHistory", user.uid, "history");
-                addDoc(tradeHistoryRef, {
-                    crypto: crypto,
-                    amount: amount,
-                    timestamp: new Date()
-                });
-            }
-        }
-
-        async function loadTradeHistory() {
-            const user = auth.currentUser;
-            if (user) {
-                const tradeHistoryRef = collection(db, "tradeHistory", user.uid, "history");
-                const q = query(tradeHistoryRef, orderBy("timestamp", "asc"));
-                onSnapshot(q, (querySnapshot) => {
-                    const tradeHistory = document.getElementById('trade_history');
-                    tradeHistory.innerHTML = '';
-                    querySnapshot.forEach((doc) => {
-                        const data = doc.data();
-                        const item = document.createElement('div');
-                        item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()}`;
-                        tradeHistory.appendChild(item);
-                    });
-                });
-            } else {
-                console.log("No user logged in.");
-            }
-        }
-
-        // Portfolio chart
-        let portfolioChart;
-        async function updatePortfolioChart() {
-            const user = auth.currentUser;
-            if (user) {
-                const historyRef = doc(db, "portfolioHistory", user.uid);
-                const historyDoc = await getDoc(historyRef);
-                if (historyDoc.exists()) {
-                    const historyData = historyDoc.data();
-                    const labels = Object.keys(historyData).map(timestamp => new Date(timestamp));
-                    const data = Object.values(historyData);
-
-                    const ctx = document.getElementById('portfolioChart').getContext('2d');
-                    if (portfolioChart) {
-                        portfolioChart.destroy();
-                    }
-                    portfolioChart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: 'Total Portfolio Value Over Time',
-                                data: data,
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1,
-                                fill: false
-                            }]
-                        },
-                        options: {
-                            scales: {
-                                x: {
-                                    type: 'time',
-                                    time: {
-                                        unit: 'day',
-                                        tooltipFormat: 'll',
-                                        displayFormats: {
-                                            day: 'MMM D'
-                                        }
-                                    },
-                                    title: {
-                                        display: true,
-                                        text: 'Date'
-                                    }
-                                },
-                                y: {
-                                    beginAtZero: true,
-                                    title: {
-                                        display: true,
-                                        text: 'Portfolio Value (USD)'
-                                    }
-                                }
-                            },
-                            plugins: {
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            return `Value: $${context.raw.toFixed(2)}`;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                } else {
-                    console.log("No historical data available.");
-                }
-            }
+            const tradeHistory = document.getElementById('trade_history');
+            const tradeItem = document.createElement('div');
+            tradeItem.innerText = `Traded ${amount} of ${crypto}`;
+            tradeHistory.appendChild(tradeItem);
         }
 
         // Refresh portfolio prices every hour
@@ -376,6 +297,49 @@
                 document.getElementById('app').style.display = 'none';
             }
         });
+
+        // Function to draw the portfolio value over time chart
+        function drawPortfolioChart(portfolioData, prices) {
+            const ctx = document.getElementById('portfolioChart').getContext('2d');
+            const labels = [];
+            const data = [];
+
+            for (const [crypto, amount] of Object.entries(portfolioData)) {
+                const price = prices[normalizeCryptoName(crypto)];
+                const value = amount * price;
+                labels.push(crypto);
+                data.push(value);
+            }
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Portfolio Value Over Time',
+                        data: data,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        fill: false,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>
