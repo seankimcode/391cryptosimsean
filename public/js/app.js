@@ -57,17 +57,30 @@ function showAuthenticatedUI() {
     document.getElementById('login_div').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     showPage('portfolio_div');
+    loadPortfolio();
 }
 
 // Fetch data from CoinGecko API
-async function fetchCryptoData() {
-    try {
-        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
-        const data = await response.json();
-        console.log('Bitcoin Price: USD', data.bitcoin.usd);
-    } catch (error) {
-        console.error('Error fetching data from CoinGecko:', error);
+async function fetchPortfolioPrices(portfolio) {
+    const prices = {};
+    for (const crypto in portfolio) {
+        const price = await fetchCryptoPrice(crypto);
+        if (price !== null) {
+            prices[crypto] = price;
+        } else {
+            console.error(`Price for ${crypto} is not available`);
+        }
     }
+    return prices;
+}
+
+// Fetch data for all cryptos in the portfolio
+async function fetchPortfolioPrices(portfolio) {
+    const prices = {};
+    for (const crypto in portfolio) {
+        prices[crypto] = await fetchCryptoPrice(crypto);
+    }
+    return prices;
 }
 
 // Show the specified page and hide others
@@ -86,7 +99,8 @@ async function loadPortfolio() {
 
         if (portfolioDoc.exists()) {
             const portfolioData = portfolioDoc.data();
-            displayPortfolio(portfolioData);
+            const prices = await fetchPortfolioPrices(portfolioData);
+            displayPortfolio(portfolioData, prices);
         } else {
             console.log("No portfolio found.");
             document.getElementById('portfolio_content').innerText = "No portfolio found.";
@@ -96,24 +110,55 @@ async function loadPortfolio() {
     }
 }
 
-function displayPortfolio(portfolioData) {
+function displayPortfolio(portfolioData, prices) {
     const portfolioContent = document.getElementById('portfolio_content');
     portfolioContent.innerHTML = '';
 
+    let totalValue = 0;
+
     for (const [crypto, amount] of Object.entries(portfolioData)) {
+        const value = amount * prices[crypto];
+        totalValue += value;
+
         const item = document.createElement('div');
-        item.innerText = `${crypto}: ${amount}`;
+        item.innerText = `${crypto}: ${amount} (${value.toFixed(2)} USD)`;
         portfolioContent.appendChild(item);
     }
+
+    const totalValueItem = document.createElement('div');
+    totalValueItem.innerText = `Total Portfolio Value: ${totalValue.toFixed(2)} USD`;
+    portfolioContent.appendChild(totalValueItem);
 }
 
 async function updatePortfolio(crypto, amount) {
     const user = auth.currentUser;
     if (user) {
         const portfolioRef = db.collection("portfolios").doc(user.uid);
-        await portfolioRef.set({ [crypto]: amount }, { merge: true });
-        loadPortfolio();
+        const portfolioDoc = await portfolioRef.get();
+        let portfolioData = {};
+        if (portfolioDoc.exists()) {
+            portfolioData = portfolioDoc.data();
+        }
+        if (portfolioData[crypto]) {
+            portfolioData[crypto] += amount;
+        } else {
+            portfolioData[crypto] = amount;
+        }
+        await portfolioRef.set(portfolioData);
+        const prices = await fetchPortfolioPrices(portfolioData);
+        displayPortfolio(portfolioData, prices);
         addTradeToHistory(crypto, amount);
+
+        // Save historical portfolio value
+        const totalValue = Object.entries(portfolioData).reduce((total, [crypto, amount]) => {
+            return total + (amount * prices[crypto]);
+        }, 0);
+        const historyRef = db.collection("portfolioHistory").doc(user.uid);
+        await historyRef.set({
+            [new Date().toISOString()]: totalValue
+        }, { merge: true });
+
+        await updatePortfolioChart();
     } else {
         console.log("No user logged in.");
     }
@@ -121,7 +166,7 @@ async function updatePortfolio(crypto, amount) {
 
 async function performTrade(event) {
     event.preventDefault();
-    const crypto = document.getElementById('crypto').value;
+    const crypto = document.getElementById('crypto').value.toLowerCase();
     const amount = parseFloat(document.getElementById('amount').value);
 
     if (crypto && !isNaN(amount)) {
@@ -133,8 +178,115 @@ async function performTrade(event) {
 }
 
 function addTradeToHistory(crypto, amount) {
-    const tradeHistory = document.getElementById('trade_history');
-    const tradeItem = document.createElement('div');
-    tradeItem.innerText = `Traded ${amount} of ${crypto}`;
-    tradeHistory.appendChild(tradeItem);
+    const user = auth.currentUser;
+    if (user) {
+        const tradeHistoryRef = db.collection("tradeHistory").doc(user.uid).collection("history");
+        tradeHistoryRef.add({
+            crypto: crypto,
+            amount: amount,
+            timestamp: new Date()
+        });
+    }
 }
+
+async function loadTradeHistory() {
+    const user = auth.currentUser;
+    if (user) {
+        const tradeHistoryRef = db.collection("tradeHistory").doc(user.uid).collection("history");
+        const q = tradeHistoryRef.orderBy("timestamp", "asc");
+        q.onSnapshot((querySnapshot) => {
+            const tradeHistory = document.getElementById('trade_history');
+            tradeHistory.innerHTML = '';
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                const item = document.createElement('div');
+                item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()}`;
+                tradeHistory.appendChild(item);
+            });
+        });
+    } else {
+        console.log("No user logged in.");
+    }
+}
+
+// Portfolio chart
+let portfolioChart;
+async function updatePortfolioChart() {
+    const user = auth.currentUser;
+    if (user) {
+        const historyRef = db.collection("portfolioHistory").doc(user.uid);
+        const historyDoc = await historyRef.get();
+        if (historyDoc.exists()) {
+            const historyData = historyDoc.data();
+            const labels = Object.keys(historyData).map(timestamp => new Date(timestamp));
+            const data = Object.values(historyData);
+
+            const ctx = document.getElementById('portfolioChart').getContext('2d');
+            if (portfolioChart) {
+                portfolioChart.destroy();
+            }
+            portfolioChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Portfolio Value Over Time',
+                        data: data,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1,
+                        fill: false
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                tooltipFormat: 'll',
+                                displayFormats: {
+                                    day: 'MMM D'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Portfolio Value (USD)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Value: $${context.raw.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            console.log("No historical data available.");
+        }
+    }
+}
+
+// Refresh portfolio prices every hour
+setInterval(loadPortfolio, 3600000);
+
+auth.onAuthStateChanged((user) => {
+    if (user) {
+        showAuthenticatedUI();
+        loadPortfolio();
+    } else {
+        document.getElementById('login_div').style.display = 'block';
+        document.getElementById('app').style.display = 'none';
+    }
+});
