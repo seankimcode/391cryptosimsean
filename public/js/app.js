@@ -1,7 +1,6 @@
-// Initialize Firebase
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, onSnapshot, deleteField, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyDl35KtU9I_qL2_UUSiwi1ckfw6kmvsRyY",
@@ -13,12 +12,10 @@ const firebaseConfig = {
     measurementId: "G-X8X1VZQEX8"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Firebase Authentication
 window.createAccount = async function() {
     const email = document.getElementById('email_field').value;
     const password = document.getElementById('password_field').value;
@@ -65,7 +62,6 @@ function showAuthenticatedUI() {
     loadBalance();
 }
 
-// Show the specified page and hide others
 window.showPage = function(pageId) {
     const pages = document.querySelectorAll('.page');
     pages.forEach(page => page.style.display = 'none');
@@ -75,31 +71,26 @@ window.showPage = function(pageId) {
     }
 }
 
-// Normalize cryptocurrency names
 function normalizeCryptoName(name) {
     const mapping = {
         'btc': 'bitcoin',
         'bitcoin': 'bitcoin',
         'eth': 'ethereum',
         'ethereum': 'ethereum'
-        // Add more mappings as needed
     };
     return mapping[name.toLowerCase()] || name.toLowerCase();
 }
 
-// Fetch data from CoinGecko API
 async function fetchCryptoPrice(crypto) {
     const normalizedCrypto = normalizeCryptoName(crypto);
     const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${normalizedCrypto}&vs_currencies=usd`);
     const data = await response.json();
-    console.log(`Response for ${crypto}:`, data); // Log the response for debugging
     if (!data[normalizedCrypto] || !data[normalizedCrypto].usd) {
         throw new Error(`No price data found for ${crypto}`);
     }
     return data[normalizedCrypto].usd;
 }
 
-// Fetch data for all cryptos in the portfolio
 async function fetchPortfolioPrices(portfolio) {
     const prices = {};
     for (const crypto in portfolio) {
@@ -108,13 +99,12 @@ async function fetchPortfolioPrices(portfolio) {
             prices[crypto] = await fetchCryptoPrice(normalizedCrypto);
         } catch (error) {
             console.error(error.message);
-            prices[crypto] = 0; // Handle the case where the price is not available
+            prices[crypto] = 0;
         }
     }
     return prices;
 }
 
-// Add portfolio management functions
 async function loadPortfolio() {
     const user = auth.currentUser;
     if (user) {
@@ -156,7 +146,6 @@ function displayPortfolio(portfolioData, prices) {
         portfolioContent.appendChild(item);
     }
 
-    // Update portfolio chart
     updatePortfolioChart(portfolioData, prices);
 }
 
@@ -182,7 +171,7 @@ async function updatePortfolio(crypto, amount, purchasePrice) {
         const prices = await fetchPortfolioPrices(portfolioData);
         displayPortfolio(portfolioData, prices);
         addTradeToHistory(crypto, amount, purchasePrice);
-        updateBalance(-amount * purchasePrice); // Deduct the cost from the balance
+        updateBalance(-amount * purchasePrice);
     } else {
         console.log("No user logged in.");
     }
@@ -238,11 +227,13 @@ async function loadTradeHistory() {
             tradeHistory.innerHTML = '';
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
+                const item = document.createElement('div');
                 if (data.purchasePrice) {
-                    const item = document.createElement('div');
                     item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()} at $${data.purchasePrice.toFixed(2)} USD`;
-                    tradeHistory.appendChild(item);
+                } else {
+                    item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()}`;
                 }
+                tradeHistory.appendChild(item);
             });
         });
     } else {
@@ -250,7 +241,6 @@ async function loadTradeHistory() {
     }
 }
 
-// Portfolio chart
 let portfolioChart;
 function updatePortfolioChart(portfolioData, prices) {
     const ctx = document.getElementById('portfolioChart').getContext('2d');
@@ -260,7 +250,6 @@ function updatePortfolioChart(portfolioData, prices) {
         return portfolioData[normalizedLabel].amount * prices[normalizedLabel];
     });
 
-    // Destroy the existing chart instance if it exists
     if (portfolioChart) {
         portfolioChart.destroy();
     }
@@ -282,9 +271,9 @@ function updatePortfolioChart(portfolioData, prices) {
                     type: 'time',
                     time: {
                         unit: 'day',
-                        tooltipFormat: 'MMM d', // Change `MMM D` to `MMM d`
+                        tooltipFormat: 'MMM d',
                         displayFormats: {
-                            day: 'MMM d' // Change `MMM D` to `MMM d`
+                            day: 'MMM d'
                         }
                     },
                     title: {
@@ -313,7 +302,6 @@ function updatePortfolioChart(portfolioData, prices) {
     });
 }
 
-// Refresh portfolio prices every hour
 setInterval(loadPortfolio, 3600000);
 
 async function loadBalance() {
@@ -370,3 +358,40 @@ onAuthStateChanged(auth, (user) => {
         document.getElementById('app').style.display = 'none';
     }
 });
+
+window.performSell = async function(event) {
+    event.preventDefault();
+    const crypto = document.getElementById('sell_crypto').value.toLowerCase();
+    const amount = parseFloat(document.getElementById('sell_amount').value);
+
+    if (crypto && !isNaN(amount)) {
+        const normalizedCrypto = normalizeCryptoName(crypto);
+        const user = auth.currentUser;
+        const portfolioRef = doc(db, "portfolios", user.uid);
+        const portfolioDoc = await getDoc(portfolioRef);
+        let portfolioData = {};
+        if (portfolioDoc.exists()) {
+            portfolioData = portfolioDoc.data();
+        } else {
+            alert('No portfolio found.');
+            return;
+        }
+
+        if (portfolioData[normalizedCrypto] && portfolioData[normalizedCrypto].amount >= amount) {
+            const sellPrice = await fetchCryptoPrice(crypto);
+            portfolioData[normalizedCrypto].amount -= amount;
+            if (portfolioData[normalizedCrypto].amount <= 0) {
+                delete portfolioData[normalizedCrypto];
+            }
+            await setDoc(portfolioRef, portfolioData);
+            await updateBalance(amount * sellPrice);
+            const prices = await fetchPortfolioPrices(portfolioData);
+            displayPortfolio(portfolioData, prices);
+            alert('Sell successful!');
+        } else {
+            alert('Insufficient amount in portfolio.');
+        }
+    } else {
+        alert('Invalid sell details.');
+    }
+}
