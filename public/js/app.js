@@ -128,6 +128,8 @@ function displayPortfolio(portfolioData, prices) {
     const portfolioContent = document.getElementById('portfolio_content');
     portfolioContent.innerHTML = '';
 
+    let totalPortfolioValue = 0; // Initialize total portfolio value
+
     for (const [crypto, data] of Object.entries(portfolioData)) {
         const amount = data.amount;
         const purchasePrice = data.purchasePrice;
@@ -137,6 +139,8 @@ function displayPortfolio(portfolioData, prices) {
         const profitLoss = currentValue - purchaseValue;
         const profitLossText = profitLoss >= 0 ? `Profit: $${profitLoss.toFixed(2)}` : `Loss: $${(-profitLoss).toFixed(2)}`;
 
+        totalPortfolioValue += currentValue; // Add to total portfolio value
+
         const item = document.createElement('div');
         if (amount && purchasePrice && currentPrice) {
             item.innerHTML = `${crypto}: ${amount} (${currentValue.toFixed(2)} USD) - ${profitLossText}`;
@@ -145,6 +149,11 @@ function displayPortfolio(portfolioData, prices) {
         }
         portfolioContent.appendChild(item);
     }
+
+    // Display total portfolio value
+    const totalValueDiv = document.createElement('div');
+    totalValueDiv.innerHTML = `<strong>Total Portfolio Value: $${totalPortfolioValue.toFixed(2)}</strong>`;
+    portfolioContent.appendChild(totalValueDiv);
 
     updatePortfolioChart(portfolioData, prices);
 }

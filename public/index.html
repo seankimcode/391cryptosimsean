@@ -19,8 +19,8 @@
             <div class="list-group list-group-flush">
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('portfolio_div')">Portfolio</a>
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('trade_div')">Trade</a>
-                <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('deposit_div')">Deposit</a>
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('sell_div')">Sell</a>
+                <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('deposit_div')">Deposit</a>
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="market.html">Market</a>
             </div>
         </div>
@@ -51,6 +51,9 @@
                         <div id="portfolio_content">
                             <!-- Portfolio content will go here -->
                         </div>
+                        <div id="total_portfolio_value">
+                            <!-- Total portfolio value will be displayed here -->
+                        </div>
                         <h4>Portfolio Value Over Time</h4>
                         <canvas id="portfolioChart"></canvas>
                     </div>
@@ -71,17 +74,6 @@
                         </div>
                     </div>
 
-                    <div id="deposit_div" class="page" style="display: none;">
-                        <h3>Deposit Money</h3>
-                        <form onsubmit="return performDeposit(event)">
-                            <label for="deposit_amount">Amount:</label>
-                            <input type="number" id="deposit_amount" name="deposit_amount" class="form-control mb-3" required>
-                            <button type="submit" class="btn btn-primary">Deposit</button>
-                        </form>
-                        <div id="balance_content"></div>
-                        <button class="btn btn-danger mt-3" onclick="clearBalance()">Clear Balance</button>
-                    </div>
-
                     <div id="sell_div" class="page" style="display: none;">
                         <h3>Sell Cryptocurrency</h3>
                         <form onsubmit="return performSell(event)">
@@ -91,6 +83,17 @@
                             <input type="number" id="sell_amount" name="sell_amount" class="form-control mb-3" required>
                             <button type="submit" class="btn btn-primary">Sell</button>
                         </form>
+                    </div>
+
+                    <div id="deposit_div" class="page" style="display: none;">
+                        <h3>Deposit Money</h3>
+                        <form onsubmit="return performDeposit(event)">
+                            <label for="deposit_amount">Amount:</label>
+                            <input type="number" id="deposit_amount" name="deposit_amount" class="form-control mb-3" required>
+                            <button type="submit" class="btn btn-primary">Deposit</button>
+                        </form>
+                        <div id="balance_content"></div>
+                        <button onclick="clearBalance()" class="btn btn-danger mt-3">Clear Balance</button>
                     </div>
                 </div>
             </div>
