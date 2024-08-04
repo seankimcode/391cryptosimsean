@@ -187,7 +187,8 @@
             const prices = {};
             for (const crypto in portfolio) {
                 try {
-                    prices[crypto] = await fetchCryptoPrice(crypto);
+                    const normalizedCrypto = normalizeCryptoName(crypto);
+                    prices[crypto] = await fetchCryptoPrice(normalizedCrypto);
                 } catch (error) {
                     console.error(error.message);
                     prices[crypto] = 0; // Handle the case where the price is not available
@@ -220,10 +221,21 @@
             const portfolioContent = document.getElementById('portfolio_content');
             portfolioContent.innerHTML = '';
 
-            for (const [crypto, amount] of Object.entries(portfolioData)) {
-                const value = amount * prices[crypto];
+            for (const [crypto, data] of Object.entries(portfolioData)) {
+                const amount = data.amount;
+                const purchasePrice = data.purchasePrice;
+                const currentPrice = prices[normalizeCryptoName(crypto)];
+                const currentValue = amount * currentPrice;
+                const purchaseValue = amount * purchasePrice;
+                const profitLoss = currentValue - purchaseValue;
+                const profitLossText = profitLoss >= 0 ? `Profit: $${profitLoss.toFixed(2)}` : `Loss: $${(-profitLoss).toFixed(2)}`;
+
                 const item = document.createElement('div');
-                item.innerText = `${crypto}: ${amount} (${value.toFixed(2)} USD)`;
+                if (amount && purchasePrice && currentPrice) {
+                    item.innerHTML = `${crypto}: ${amount} (${currentValue.toFixed(2)} USD) - ${profitLossText}`;
+                } else {
+                    item.innerHTML = `${crypto}: ${amount} (Price data unavailable)`;
+                }
                 portfolioContent.appendChild(item);
             }
 
@@ -231,7 +243,7 @@
             updatePortfolioChart(portfolioData, prices);
         }
 
-        async function updatePortfolio(crypto, amount) {
+        async function updatePortfolio(crypto, amount, purchasePrice) {
             const user = auth.currentUser;
             if (user) {
                 const portfolioRef = doc(db, "portfolios", user.uid);
@@ -242,14 +254,17 @@
                 }
                 const normalizedCrypto = normalizeCryptoName(crypto);
                 if (portfolioData[normalizedCrypto]) {
-                    portfolioData[normalizedCrypto] += amount;
+                    portfolioData[normalizedCrypto].amount += amount;
                 } else {
-                    portfolioData[normalizedCrypto] = amount;
+                    portfolioData[normalizedCrypto] = {
+                        amount: amount,
+                        purchasePrice: purchasePrice
+                    };
                 }
                 await setDoc(portfolioRef, portfolioData);
                 const prices = await fetchPortfolioPrices(portfolioData);
                 displayPortfolio(portfolioData, prices);
-                addTradeToHistory(crypto, amount);
+                addTradeToHistory(crypto, amount, purchasePrice);
             } else {
                 console.log("No user logged in.");
             }
@@ -261,20 +276,22 @@
             const amount = parseFloat(document.getElementById('amount').value);
 
             if (crypto && !isNaN(amount)) {
-                await updatePortfolio(crypto, amount);
+                const purchasePrice = await fetchCryptoPrice(crypto);
+                await updatePortfolio(crypto, amount, purchasePrice);
                 alert('Trade successful!');
             } else {
                 alert('Invalid trade details.');
             }
         }
 
-        function addTradeToHistory(crypto, amount) {
+        function addTradeToHistory(crypto, amount, purchasePrice) {
             const user = auth.currentUser;
             if (user) {
                 const tradeHistoryRef = collection(db, "tradeHistory", user.uid, "history");
                 addDoc(tradeHistoryRef, {
                     crypto: crypto,
                     amount: amount,
+                    purchasePrice: purchasePrice,
                     timestamp: new Date()
                 });
             }
@@ -291,7 +308,11 @@
                     querySnapshot.forEach((doc) => {
                         const data = doc.data();
                         const item = document.createElement('div');
-                        item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()}`;
+                        if (data.purchasePrice) {
+                            item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()} at $${data.purchasePrice.toFixed(2)} USD`;
+                        } else {
+                            item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()}`;
+                        }
                         tradeHistory.appendChild(item);
                     });
                 });
@@ -305,60 +326,62 @@
         function updatePortfolioChart(portfolioData, prices) {
             const ctx = document.getElementById('portfolioChart').getContext('2d');
             const labels = Object.keys(portfolioData);
-            const data = labels.map(label => portfolioData[label] * prices[label]);
+            const data = labels.map(label => {
+                const normalizedLabel = normalizeCryptoName(label);
+                return portfolioData[normalizedLabel].amount * prices[normalizedLabel];
+            });
 
+            // Destroy the existing chart instance if it exists
             if (portfolioChart) {
-                portfolioChart.data.labels = labels;
-                portfolioChart.data.datasets[0].data = data;
-                portfolioChart.update();
-            } else {
-                portfolioChart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Portfolio Value Over Time',
-                            data: data,
-                            borderColor: 'rgba(75, 192, 192, 1)',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        scales: {
-                            x: {
-                                type: 'time',
-                                time: {
-                                    unit: 'day',
-                                    tooltipFormat: 'll',
-                                    displayFormats: {
-                                        day: 'MMM D'
-                                    }
-                                },
-                                title: {
-                                    display: true,
-                                    text: 'Date'
+                portfolioChart.destroy();
+            }
+
+            portfolioChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Portfolio Value Over Time',
+                        data: data,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                tooltipFormat: 'MMM d', // Change `MMM D` to `MMM d`
+                                displayFormats: {
+                                    day: 'MMM d' // Change `MMM D` to `MMM d`
                                 }
                             },
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Portfolio Value (USD)'
-                                }
+                            title: {
+                                display: true,
+                                text: 'Date'
                             }
                         },
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return `Value: $${context.raw.toFixed(2)}`;
-                                    }
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Portfolio Value (USD)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Value: $${context.raw.toFixed(2)}`;
                                 }
                             }
                         }
                     }
-                });
-            }
+                }
+            });
         }
 
         // Refresh portfolio prices every hour
