@@ -62,7 +62,7 @@ function showAuthenticatedUI() {
 
 // Fetch data from CoinGecko API
 async function fetchCryptoPrice(crypto) {
-    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${crypto}&vs_currencies=usd`);
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${crypto}&vs_currencies=usd&x_cg_demo_api_key=CG-GWH6d4aEUY66FHYcP3WMP8c1`);
     const data = await response.json();
     return data[crypto].usd;
 }
@@ -107,23 +107,11 @@ function displayPortfolio(portfolioData, prices) {
     const portfolioContent = document.getElementById('portfolio_content');
     portfolioContent.innerHTML = '';
 
-    let totalValue = 0;
-
     for (const [crypto, amount] of Object.entries(portfolioData)) {
-        const value = amount * prices[crypto];
-        totalValue += value;
-
         const item = document.createElement('div');
-        item.innerText = `${crypto}: ${amount} (${value.toFixed(2)} USD)`;
+        item.innerText = `${crypto}: ${amount} (${(amount * prices[crypto]).toFixed(2)} USD)`;
         portfolioContent.appendChild(item);
     }
-
-    const totalValueItem = document.createElement('div');
-    totalValueItem.innerText = `Total Portfolio Value: ${totalValue.toFixed(2)} USD`;
-    portfolioContent.appendChild(totalValueItem);
-
-    // Update portfolio chart
-    updatePortfolioChart(portfolioData, prices);
 }
 
 async function updatePortfolio(crypto, amount) {
@@ -144,19 +132,9 @@ async function updatePortfolio(crypto, amount) {
         const prices = await fetchPortfolioPrices(portfolioData);
         displayPortfolio(portfolioData, prices);
         addTradeToHistory(crypto, amount);
-
-        // Save historical portfolio value
-        const totalValue = Object.entries(portfolioData).reduce((total, [crypto, amount]) => {
-            return total + (amount * prices[crypto]);
-        }, 0);
-        const historyRef = db.collection("portfolioHistory").doc(user.uid);
-        await historyRef.set({
-            [new Date().toISOString()]: totalValue
-        }, { merge: true });
     } else {
         console.log("No user logged in.");
     }
-    await updatePortfolioChart();
 }
 
 async function performTrade(event) {
@@ -173,69 +151,10 @@ async function performTrade(event) {
 }
 
 function addTradeToHistory(crypto, amount) {
-    const user = auth.currentUser;
-    if (user) {
-        const tradeHistoryRef = db.collection("tradeHistory").doc(user.uid).collection("history");
-        tradeHistoryRef.add({
-            crypto: crypto,
-            amount: amount,
-            timestamp: new Date()
-        });
-    }
-}
-
-async function loadTradeHistory() {
-    const user = auth.currentUser;
-    if (user) {
-        const tradeHistoryRef = db.collection("tradeHistory").doc(user.uid).collection("history");
-        const q = tradeHistoryRef.orderBy("timestamp", "asc");
-        q.onSnapshot((querySnapshot) => {
-            const tradeHistory = document.getElementById('trade_history');
-            tradeHistory.innerHTML = '';
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const item = document.createElement('div');
-                item.innerText = `Traded ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()}`;
-                tradeHistory.appendChild(item);
-            });
-        });
-    } else {
-        console.log("No user logged in.");
-    }
-}
-
-// Portfolio chart
-let portfolioChart;
-function updatePortfolioChart(portfolioData, prices) {
-    const ctx = document.getElementById('portfolioChart').getContext('2d');
-    const labels = Object.keys(portfolioData);
-    const data = labels.map(label => portfolioData[label] * prices[label]);
-
-    if (portfolioChart) {
-        portfolioChart.data.labels = labels;
-        portfolioChart.data.datasets[0].data = data;
-        portfolioChart.update();
-    } else {
-        portfolioChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Portfolio Value Over Time',
-                    data: data,
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
+    const tradeHistory = document.getElementById('trade_history');
+    const tradeItem = document.createElement('div');
+    tradeItem.innerText = `Traded ${amount} of ${crypto}`;
+    tradeHistory.appendChild(tradeItem);
 }
 
 // Refresh portfolio prices every hour

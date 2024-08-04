@@ -12,7 +12,7 @@
     <link href="css/styles.css" rel="stylesheet" />
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@1.1.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
@@ -58,7 +58,6 @@
                         </div>
                         <h4>Portfolio Value Over Time</h4>
                         <canvas id="portfolioChart"></canvas>
-                        
                     </div>
 
                     <div id="trade_div" class="page" style="display: none;">
@@ -159,18 +158,40 @@
             document.getElementById(pageId).style.display = 'block';
         }
 
+        // Normalize cryptocurrency names
+        function normalizeCryptoName(name) {
+            const mapping = {
+                'btc': 'bitcoin',
+                'bitcoin': 'bitcoin',
+                'eth': 'ethereum',
+                'ethereum': 'ethereum'
+                // Add more mappings as needed
+            };
+            return mapping[name.toLowerCase()] || name.toLowerCase();
+        }
+
         // Fetch data from CoinGecko API
         async function fetchCryptoPrice(crypto) {
-            const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${crypto}&vs_currencies=usd`);
+            const normalizedCrypto = normalizeCryptoName(crypto);
+            const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${normalizedCrypto}&vs_currencies=usd`);
             const data = await response.json();
-            return data[crypto].usd;
+            console.log(`Response for ${crypto}:`, data); // Log the response for debugging
+            if (!data[normalizedCrypto] || !data[normalizedCrypto].usd) {
+                throw new Error(`No price data found for ${crypto}`);
+            }
+            return data[normalizedCrypto].usd;
         }
 
         // Fetch data for all cryptos in the portfolio
         async function fetchPortfolioPrices(portfolio) {
             const prices = {};
             for (const crypto in portfolio) {
-                prices[crypto] = await fetchCryptoPrice(crypto);
+                try {
+                    prices[crypto] = await fetchCryptoPrice(crypto);
+                } catch (error) {
+                    console.error(error.message);
+                    prices[crypto] = 0; // Handle the case where the price is not available
+                }
             }
             return prices;
         }
@@ -186,7 +207,6 @@
                     const portfolioData = portfolioDoc.data();
                     const prices = await fetchPortfolioPrices(portfolioData);
                     displayPortfolio(portfolioData, prices);
-                    await updatePortfolioChart();
                 } else {
                     console.log("No portfolio found.");
                     document.getElementById('portfolio_content').innerText = "No portfolio found.";
@@ -200,20 +220,15 @@
             const portfolioContent = document.getElementById('portfolio_content');
             portfolioContent.innerHTML = '';
 
-            let totalValue = 0;
-
             for (const [crypto, amount] of Object.entries(portfolioData)) {
                 const value = amount * prices[crypto];
-                totalValue += value;
-
                 const item = document.createElement('div');
                 item.innerText = `${crypto}: ${amount} (${value.toFixed(2)} USD)`;
                 portfolioContent.appendChild(item);
             }
 
-            const totalValueItem = document.createElement('div');
-            totalValueItem.innerText = `Total Portfolio Value: ${totalValue.toFixed(2)} USD`;
-            portfolioContent.appendChild(totalValueItem);
+            // Update portfolio chart
+            updatePortfolioChart(portfolioData, prices);
         }
 
         async function updatePortfolio(crypto, amount) {
@@ -225,26 +240,16 @@
                 if (portfolioDoc.exists()) {
                     portfolioData = portfolioDoc.data();
                 }
-                if (portfolioData[crypto]) {
-                    portfolioData[crypto] += amount;
+                const normalizedCrypto = normalizeCryptoName(crypto);
+                if (portfolioData[normalizedCrypto]) {
+                    portfolioData[normalizedCrypto] += amount;
                 } else {
-                    portfolioData[crypto] = amount;
+                    portfolioData[normalizedCrypto] = amount;
                 }
                 await setDoc(portfolioRef, portfolioData);
                 const prices = await fetchPortfolioPrices(portfolioData);
                 displayPortfolio(portfolioData, prices);
                 addTradeToHistory(crypto, amount);
-
-                // Save historical portfolio value
-                const totalValue = Object.entries(portfolioData).reduce((total, [crypto, amount]) => {
-                    return total + (amount * prices[crypto]);
-                }, 0);
-                const historyRef = doc(db, "portfolioHistory", user.uid);
-                await setDoc(historyRef, {
-                    [new Date().toISOString()]: totalValue
-                }, { merge: true });
-
-                await updatePortfolioChart();
             } else {
                 console.log("No user logged in.");
             }
@@ -297,70 +302,62 @@
 
         // Portfolio chart
         let portfolioChart;
-        async function updatePortfolioChart() {
-            const user = auth.currentUser;
-            if (user) {
-                const historyRef = doc(db, "portfolioHistory", user.uid);
-                const historyDoc = await getDoc(historyRef);
-                if (historyDoc.exists()) {
-                    const historyData = historyDoc.data();
-                    const labels = Object.keys(historyData).map(timestamp => new Date(timestamp));
-                    const data = Object.values(historyData);
+        function updatePortfolioChart(portfolioData, prices) {
+            const ctx = document.getElementById('portfolioChart').getContext('2d');
+            const labels = Object.keys(portfolioData);
+            const data = labels.map(label => portfolioData[label] * prices[label]);
 
-                    const ctx = document.getElementById('portfolioChart').getContext('2d');
-                    if (portfolioChart) {
-                        portfolioChart.destroy();
-                    }
-                    portfolioChart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: 'Total Portfolio Value Over Time',
-                                data: data,
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1,
-                                fill: false
-                            }]
-                        },
-                        options: {
-                            scales: {
-                                x: {
-                                    type: 'time',
-                                    time: {
-                                        unit: 'day',
-                                        tooltipFormat: 'll',
-                                        displayFormats: {
-                                            day: 'MMM D'
-                                        }
-                                    },
-                                    title: {
-                                        display: true,
-                                        text: 'Date'
+            if (portfolioChart) {
+                portfolioChart.data.labels = labels;
+                portfolioChart.data.datasets[0].data = data;
+                portfolioChart.update();
+            } else {
+                portfolioChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Portfolio Value Over Time',
+                            data: data,
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'day',
+                                    tooltipFormat: 'll',
+                                    displayFormats: {
+                                        day: 'MMM D'
                                     }
                                 },
-                                y: {
-                                    beginAtZero: true,
-                                    title: {
-                                        display: true,
-                                        text: 'Portfolio Value (USD)'
-                                    }
+                                title: {
+                                    display: true,
+                                    text: 'Date'
                                 }
                             },
-                            plugins: {
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            return `Value: $${context.raw.toFixed(2)}`;
-                                        }
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Portfolio Value (USD)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `Value: $${context.raw.toFixed(2)}`;
                                     }
                                 }
                             }
                         }
-                    });
-                } else {
-                    console.log("No historical data available.");
-                }
+                    }
+                });
             }
         }
 
