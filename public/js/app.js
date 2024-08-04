@@ -349,6 +349,18 @@ async function updateBalance(amount) {
     }
 }
 
+window.clearBalance = async function() {
+    const user = auth.currentUser;
+    if (user) {
+        const balanceRef = doc(db, "balances", user.uid);
+        await setDoc(balanceRef, { balance: 0 });
+        loadBalance();
+        alert('Balance cleared!');
+    } else {
+        console.log("No user logged in.");
+    }
+}
+
 onAuthStateChanged(auth, (user) => {
     if (user) {
         showAuthenticatedUI();
