@@ -270,14 +270,26 @@ async function updatePortfolio(crypto, amount, purchasePrice) {
         }
         await setDoc(portfolioRef, portfolioData);
         const prices = await fetchPortfolioPrices(portfolioData);
+        
+        // Calculate total portfolio value
+        let totalPortfolioValue = 0;
+        for (const [crypto, data] of Object.entries(portfolioData)) {
+            const currentPrice = prices[normalizeCryptoName(crypto)];
+            const currentValue = data.amount * currentPrice;
+            totalPortfolioValue += currentValue;
+        }
+
         displayPortfolio(portfolioData, prices);
         addTradeToHistory(crypto, amount, purchasePrice);
         updateBalance(-amount * purchasePrice);
+
+        // Update Firestore with the new total portfolio value
         await updatePortfolioValueHistory(totalPortfolioValue);
     } else {
         console.log("No user logged in.");
     }
 }
+
 
 window.performTrade = async function(event) {
     event.preventDefault();
@@ -529,6 +541,15 @@ window.performSell = async function(event) {
             await setDoc(portfolioRef, portfolioData);
             await updateBalance(amount * sellPrice);
             const prices = await fetchPortfolioPrices(portfolioData);
+            
+            // Calculate total portfolio value
+            let totalPortfolioValue = 0;
+            for (const [crypto, data] of Object.entries(portfolioData)) {
+                const currentPrice = prices[normalizeCryptoName(crypto)];
+                const currentValue = data.amount * currentPrice;
+                totalPortfolioValue += currentValue;
+            }
+
             displayPortfolio(portfolioData, prices);
             addSellToHistory(crypto, amount, sellPrice);
             alert('Sell successful!');
@@ -540,6 +561,7 @@ window.performSell = async function(event) {
         alert('Invalid sell details.');
     }
 }
+
 
 function addSellToHistory(crypto, amount, sellPrice) {
     const user = auth.currentUser;
