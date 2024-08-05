@@ -10949,3 +10949,83 @@ a:hover {
   background-color: #4a4a4a !important; /* Slightly lighter gray on hover */
   color: #ffffff !important; /* White text */
 }
+
+.chart-container {
+  width: 100%;
+  max-width: 400px; /* Adjust this value as needed */
+  margin: 0 auto;
+}
+
+.market-data .crypto {
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin: 10px;
+  text-align: center;
+}
+
+.market-data .crypto h3 {
+  margin-top: 0;
+}
+
+.market-data .crypto .chart-container {
+  margin-top: 10px;
+  height: 200px; /* Adjust the height as needed */
+}
+
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgba(0,0,0,0.4);
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background-color: #fefefe;
+  padding: 20px;
+  border: 1px solid #888;
+  width: 80%;
+  max-width: 600px; /* Adjust the max-width as needed */
+  box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+}
+
+.modal-content canvas {
+  width: 100% !important;
+  height: auto !important;
+}
+
+.close {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+  color: black;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+
+@media (max-width: 991.98px) {
+  .offcanvas-lg.offcanvas-start {
+    top: 0;
+    left: 0;
+    width: var(--bs-offcanvas-width);
+    border-right: var(--bs-offcanvas-border-width) solid var(--bs-offcanvas-border-color);
+    transform: translateX(-100%); /* Ensure it is hidden off the left side */
+    visibility: hidden; /* Add this line */
+  }
+  .offcanvas-lg.showing, .offcanvas-lg.show:not(.hiding) {
+    transform: translateX(0); /* Ensure it is visible when showing */
+    visibility: visible; /* Add this line */
+  }
+}

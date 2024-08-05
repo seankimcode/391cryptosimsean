@@ -151,11 +151,10 @@ function displayPortfolio(portfolioData, prices) {
     }
 
     // Display total portfolio value
-    const totalValueDiv = document.createElement('div');
+    const totalValueDiv = document.getElementById('total_portfolio_value');
     totalValueDiv.innerHTML = `<strong>Total Portfolio Value: $${totalPortfolioValue.toFixed(2)}</strong>`;
-    portfolioContent.appendChild(totalValueDiv);
 
-    updatePortfolioChart(portfolioData, prices);
+    updatePortfolioChart(totalPortfolioValue);
 }
 
 async function updatePortfolio(crypto, amount, purchasePrice) {
@@ -251,13 +250,13 @@ async function loadTradeHistory() {
 }
 
 let portfolioChart;
-function updatePortfolioChart(portfolioData, prices) {
+const portfolioDataPoints = [];
+
+function updatePortfolioChart(totalPortfolioValue) {
     const ctx = document.getElementById('portfolioChart').getContext('2d');
-    const labels = Object.keys(portfolioData);
-    const data = labels.map(label => {
-        const normalizedLabel = normalizeCryptoName(label);
-        return portfolioData[normalizedLabel].amount * prices[normalizedLabel];
-    });
+
+    const currentDate = new Date();
+    portfolioDataPoints.push({ x: currentDate, y: totalPortfolioValue });
 
     if (portfolioChart) {
         portfolioChart.destroy();
@@ -266,12 +265,12 @@ function updatePortfolioChart(portfolioData, prices) {
     portfolioChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
             datasets: [{
                 label: 'Portfolio Value Over Time',
-                data: data,
+                data: portfolioDataPoints,
                 borderColor: 'rgba(75, 192, 192, 1)',
-                borderWidth: 1
+                borderWidth: 1,
+                fill: false,
             }]
         },
         options: {
@@ -302,7 +301,7 @@ function updatePortfolioChart(portfolioData, prices) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `Value: $${context.raw.toFixed(2)}`;
+                            return `Value: $${context.raw.y.toFixed(2)}`;
                         }
                     }
                 }
@@ -416,3 +415,20 @@ window.performSell = async function(event) {
         alert('Invalid sell details.');
     }
 }
+
+/*!
+* Start Bootstrap - Simple Sidebar v6.0.6 (https://startbootstrap.com/template/simple-sidebar)
+* Copyright 2013-2023 Start Bootstrap
+* Licensed under MIT (https://github.com/StartBootstrap/startbootstrap-simple-sidebar/blob/master/LICENSE)
+*/
+
+window.addEventListener('DOMContentLoaded', event => {
+    const sidebarToggle = document.body.querySelector('#sidebarToggle');
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', event => {
+            event.preventDefault();
+            document.body.classList.toggle('sb-sidenav-toggled');
+            localStorage.setItem('sb|sidebar-toggle', document.body.classList.contains('sb-sidenav-toggled'));
+        });
+    }
+});
