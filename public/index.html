@@ -11,6 +11,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@1.1.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
 </head>
 <body>
     <div class="d-flex" id="wrapper">
@@ -21,6 +23,7 @@
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('trade_div')">Trade</a>
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('sell_div')">Sell</a>
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('deposit_div')">Deposit</a>
+                <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="#" onclick="showPage('news_div')">News</a>
                 <a class="list-group-item list-group-item-action bg-dark text-white p-3" href="market.html">Market</a>
             </div>
         </div>
@@ -48,9 +51,19 @@
                 <div id="app" style="display: none;">
                     <div id="portfolio_div" class="page">
                         <h3>Portfolio</h3>
-                        <div id="portfolio_content">
-                            <!-- Portfolio content will go here -->
-                        </div>
+                        <table class="table table-dark table-striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Cryptocurrency</th>
+                                    <th scope="col">Quantity</th>
+                                    <th scope="col">Current Value (USD)</th>
+                                    <th scope="col">Profit/Loss</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portfolio_content">
+                                <!-- Portfolio content will go here -->
+                            </tbody>
+                        </table>
                         <div id="total_portfolio_value">
                             <!-- Total portfolio value will be displayed here -->
                         </div>
@@ -83,6 +96,7 @@
                             <input type="number" id="sell_amount" name="sell_amount" class="form-control mb-3" required>
                             <button type="submit" class="btn btn-primary">Sell</button>
                         </form>
+                        <div id="sell_history"></div>
                     </div>
 
                     <div id="deposit_div" class="page" style="display: none;">
@@ -94,6 +108,11 @@
                         </form>
                         <div id="balance_content"></div>
                         <button onclick="clearBalance()" class="btn btn-danger mt-3">Clear Balance</button>
+                    </div>
+
+                    <div id="news_div" class="page" style="display: none;">
+                        <h3>Crypto News</h3>
+                        <div id="news_content"></div>
                     </div>
                 </div>
             </div>

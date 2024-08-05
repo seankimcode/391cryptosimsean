@@ -20,13 +20,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // Initialize chart
-    const initializeChart = (canvasId, sparklineData) => {
+    const initializeChart = (canvasId, sparklineData, label) => {
         const ctx = document.getElementById(canvasId).getContext('2d');
         return new Chart(ctx, {
             type: 'line',
             data: {
                 labels: sparklineData.map((_, index) => index),
                 datasets: [{
+                    label: label,
                     data: sparklineData,
                     borderColor: '#4caf50',
                     fill: false,
@@ -56,7 +57,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     marketData.forEach((crypto, index) => {
         const cryptoDiv = document.createElement('div');
         cryptoDiv.className = 'crypto';
-        cryptoDiv.onclick = () => openModal(`${crypto.id}ChartModal`);
 
         cryptoDiv.innerHTML = `
             <h3>${crypto.name} (${crypto.symbol.toUpperCase()})</h3>
@@ -70,30 +70,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         marketDataContainer.appendChild(cryptoDiv);
 
         // Initialize small chart
-        initializeChart(`${crypto.id}Chart`, crypto.sparkline_in_7d.price);
-
-        // Create modal for expanded chart
-        const modalDiv = document.createElement('div');
-        modalDiv.id = `${crypto.id}ChartModal`;
-        modalDiv.className = 'modal';
-        modalDiv.innerHTML = `
-            <div class="modal-content">
-                <span class="close" onclick="closeModal('${crypto.id}ChartModal')">&times;</span>
-                <h2>${crypto.name} (${crypto.symbol.toUpperCase()}) Price Chart</h2>
-                <canvas id="${crypto.id}ChartExpanded"></canvas>
-            </div>
-        `;
-        document.body.appendChild(modalDiv);
-
-        // Initialize expanded chart
-        initializeChart(`${crypto.id}ChartExpanded`, crypto.sparkline_in_7d.price);
+        initializeChart(`${crypto.id}Chart`, crypto.sparkline_in_7d.price, crypto.name);
     });
 });
-
-function openModal(modalId) {
-    document.getElementById(modalId).style.display = "flex";
-}
-
-function closeModal(modalId) {
-    document.getElementById(modalId).style.display = "none";
-}

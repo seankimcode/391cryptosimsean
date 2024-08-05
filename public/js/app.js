@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, onSnapshot, deleteField, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyDl35KtU9I_qL2_UUSiwi1ckfw6kmvsRyY",
@@ -59,7 +59,10 @@ function showAuthenticatedUI() {
     showPage('portfolio_div');
     loadPortfolio();
     loadTradeHistory();
+    loadSellHistory();
     loadBalance();
+    loadNews();
+    loadPortfolioHistory();
 }
 
 window.showPage = function(pageId) {
@@ -81,14 +84,56 @@ function normalizeCryptoName(name) {
     return mapping[name.toLowerCase()] || name.toLowerCase();
 }
 
-async function fetchCryptoPrice(crypto) {
-    const normalizedCrypto = normalizeCryptoName(crypto);
-    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${normalizedCrypto}&vs_currencies=usd`);
-    const data = await response.json();
-    if (!data[normalizedCrypto] || !data[normalizedCrypto].usd) {
-        throw new Error(`No price data found for ${crypto}`);
+// Define a cache object
+const priceCache = {};
+
+// Set cache expiration time (in milliseconds)
+const cacheExpiration = 60000; // 1 minute
+
+function getCachedPrice(crypto) {
+    const cachedData = priceCache[crypto];
+    if (cachedData) {
+        const now = new Date().getTime();
+        if (now - cachedData.timestamp < cacheExpiration) {
+            return cachedData.price;
+        } else {
+            delete priceCache[crypto];
+        }
     }
-    return data[normalizedCrypto].usd;
+    return null;
+}
+
+function setCachedPrice(crypto, price) {
+    const now = new Date().getTime();
+    priceCache[crypto] = {
+        price: price,
+        timestamp: now
+    };
+}
+
+const apiKey = 'CG-GWH6d4aEUY66FHYcP3WMP8c1';
+
+async function fetchCryptoPrice(crypto) {
+    const cachedPrice = getCachedPrice(crypto);
+    if (cachedPrice !== null) {
+        return cachedPrice;
+    }
+
+    try {
+        const response = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
+            params: {
+                ids: crypto,
+                vs_currencies: 'usd',
+                x_cg_demo_api_key: apiKey
+            }
+        });
+        const price = response.data[crypto].usd;
+        setCachedPrice(crypto, price);
+        return price;
+    } catch (error) {
+        console.error('Error fetching data:', error);
+        return 0;
+    }
 }
 
 async function fetchPortfolioPrices(portfolio) {
@@ -129,6 +174,7 @@ function displayPortfolio(portfolioData, prices) {
     portfolioContent.innerHTML = '';
 
     let totalPortfolioValue = 0; // Initialize total portfolio value
+    const portfolioEntries = []; // Array to store portfolio entries for sorting
 
     for (const [crypto, data] of Object.entries(portfolioData)) {
         const amount = data.amount;
@@ -141,20 +187,67 @@ function displayPortfolio(portfolioData, prices) {
 
         totalPortfolioValue += currentValue; // Add to total portfolio value
 
-        const item = document.createElement('div');
-        if (amount && purchasePrice && currentPrice) {
-            item.innerHTML = `${crypto}: ${amount} (${currentValue.toFixed(2)} USD) - ${profitLossText}`;
-        } else {
-            item.innerHTML = `${crypto}: ${amount} (Price data unavailable)`;
-        }
-        portfolioContent.appendChild(item);
+        // Push portfolio entry to array for sorting
+        portfolioEntries.push({
+            crypto: crypto,
+            amount: amount,
+            currentValue: currentValue,
+            profitLossText: profitLossText
+        });
     }
+
+    // Sort portfolio entries by current value from biggest to smallest
+    portfolioEntries.sort((a, b) => b.currentValue - a.currentValue);
+
+    // Append sorted portfolio entries to the table
+    portfolioEntries.forEach(entry => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${entry.crypto}</td>
+            <td>${entry.amount}</td>
+            <td>${entry.currentValue.toFixed(2)} USD</td>
+            <td>${entry.profitLossText}</td>
+        `;
+        portfolioContent.appendChild(row);
+    });
 
     // Display total portfolio value
     const totalValueDiv = document.getElementById('total_portfolio_value');
     totalValueDiv.innerHTML = `<strong>Total Portfolio Value: $${totalPortfolioValue.toFixed(2)}</strong>`;
 
     updatePortfolioChart(totalPortfolioValue);
+}
+
+async function updatePortfolioValueHistory(totalPortfolioValue) {
+    const user = auth.currentUser;
+    if (user) {
+        const portfolioHistoryRef = collection(db, "portfolioHistory", user.uid, "history");
+        await addDoc(portfolioHistoryRef, {
+            value: totalPortfolioValue,
+            timestamp: new Date()
+        });
+    }
+}
+
+async function loadPortfolioHistory() {
+    const user = auth.currentUser;
+    if (user) {
+        const portfolioHistoryRef = collection(db, "portfolioHistory", user.uid, "history");
+        const q = query(portfolioHistoryRef, orderBy("timestamp", "asc"));
+        onSnapshot(q, (querySnapshot) => {
+            portfolioDataPoints.length = 0; // Clear existing data points
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                portfolioDataPoints.push({
+                    x: data.timestamp.toDate(),
+                    y: data.value
+                });
+            });
+            updatePortfolioChart();
+        });
+    } else {
+        console.log("No user logged in.");
+    }
 }
 
 async function updatePortfolio(crypto, amount, purchasePrice) {
@@ -180,6 +273,7 @@ async function updatePortfolio(crypto, amount, purchasePrice) {
         displayPortfolio(portfolioData, prices);
         addTradeToHistory(crypto, amount, purchasePrice);
         updateBalance(-amount * purchasePrice);
+        await updatePortfolioValueHistory(totalPortfolioValue);
     } else {
         console.log("No user logged in.");
     }
@@ -249,14 +343,35 @@ async function loadTradeHistory() {
     }
 }
 
+async function loadSellHistory() {
+    const user = auth.currentUser;
+    if (user) {
+        const sellHistoryRef = collection(db, "sellHistory", user.uid, "history");
+        const q = query(sellHistoryRef, orderBy("timestamp", "asc"));
+        onSnapshot(q, (querySnapshot) => {
+            const sellHistory = document.getElementById('sell_history');
+            sellHistory.innerHTML = '';
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                const item = document.createElement('div');
+                if (data.sellPrice) {
+                    item.innerText = `Sold ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()} at $${data.sellPrice.toFixed(2)} USD`;
+                } else {
+                    item.innerText = `Sold ${data.amount} of ${data.crypto} on ${data.timestamp.toDate().toLocaleString()}`;
+                }
+                sellHistory.appendChild(item);
+            });
+        });
+    } else {
+        console.log("No user logged in.");
+    }
+}
+
 let portfolioChart;
 const portfolioDataPoints = [];
 
-function updatePortfolioChart(totalPortfolioValue) {
+function updatePortfolioChart() {
     const ctx = document.getElementById('portfolioChart').getContext('2d');
-
-    const currentDate = new Date();
-    portfolioDataPoints.push({ x: currentDate, y: totalPortfolioValue });
 
     if (portfolioChart) {
         portfolioChart.destroy();
@@ -279,7 +394,7 @@ function updatePortfolioChart(totalPortfolioValue) {
                     type: 'time',
                     time: {
                         unit: 'day',
-                        tooltipFormat: 'MMM d',
+                        tooltipFormat: 'MMM d, HH:mm', // Format for the tooltip
                         displayFormats: {
                             day: 'MMM d'
                         }
@@ -301,7 +416,17 @@ function updatePortfolioChart(totalPortfolioValue) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `Value: $${context.raw.y.toFixed(2)}`;
+                            const date = new Date(context.raw.x);
+                            const value = context.raw.y.toFixed(2);
+                            const dateString = date.toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                            });
+                            return `Value: $${value} at ${dateString}`;
                         }
                     }
                 }
@@ -309,8 +434,6 @@ function updatePortfolioChart(totalPortfolioValue) {
         }
     });
 }
-
-setInterval(loadPortfolio, 3600000);
 
 async function loadBalance() {
     const user = auth.currentUser;
@@ -407,7 +530,9 @@ window.performSell = async function(event) {
             await updateBalance(amount * sellPrice);
             const prices = await fetchPortfolioPrices(portfolioData);
             displayPortfolio(portfolioData, prices);
+            addSellToHistory(crypto, amount, sellPrice);
             alert('Sell successful!');
+            await updatePortfolioValueHistory(totalPortfolioValue);
         } else {
             alert('Insufficient amount in portfolio.');
         }
@@ -416,19 +541,50 @@ window.performSell = async function(event) {
     }
 }
 
-/*!
-* Start Bootstrap - Simple Sidebar v6.0.6 (https://startbootstrap.com/template/simple-sidebar)
-* Copyright 2013-2023 Start Bootstrap
-* Licensed under MIT (https://github.com/StartBootstrap/startbootstrap-simple-sidebar/blob/master/LICENSE)
-*/
-
-window.addEventListener('DOMContentLoaded', event => {
-    const sidebarToggle = document.body.querySelector('#sidebarToggle');
-    if (sidebarToggle) {
-        sidebarToggle.addEventListener('click', event => {
-            event.preventDefault();
-            document.body.classList.toggle('sb-sidenav-toggled');
-            localStorage.setItem('sb|sidebar-toggle', document.body.classList.contains('sb-sidenav-toggled'));
+function addSellToHistory(crypto, amount, sellPrice) {
+    const user = auth.currentUser;
+    if (user) {
+        const sellHistoryRef = collection(db, "sellHistory", user.uid, "history");
+        addDoc(sellHistoryRef, {
+            crypto: crypto,
+            amount: amount,
+            sellPrice: sellPrice,
+            timestamp: new Date()
         });
     }
-});
+}
+
+window.loadNews = async function() {
+    const newsContent = document.getElementById('news_content');
+    newsContent.innerHTML = 'Loading news...';
+
+    try {
+        const response = await fetch('https://cryptonews-api.com/api/v1/category?section=general&items=3&page=1&token=y6286ua8i4y7rob3hodj6tsjgq5nxnl1ldukmwp0');
+        const data = await response.json();
+        displayNews(data.data);
+    } catch (error) {
+        console.error('Error fetching news:', error);
+    }
+}
+
+function displayNews(newsData) {
+    const newsContent = document.getElementById('news_content');
+    newsContent.innerHTML = '';
+
+    newsData.forEach(news => {
+        const newsItem = document.createElement('div');
+        newsItem.classList.add('news-item', 'mb-4');
+
+        const newsImage = news.image_url ? `<img src="${news.image_url}" alt="${news.title}" class="img-fluid mb-2"/>` : '';
+
+        newsItem.innerHTML = `
+            ${newsImage}
+            <h4>${news.title}</h4>
+            <p>${news.text}</p>
+            <small class="text-muted">${news.source_name} - ${news.date}</small>
+            <br>
+            <a href="${news.news_url}" target="_blank">Read more</a>
+        `;
+        newsContent.appendChild(newsItem);
+    });
+}
